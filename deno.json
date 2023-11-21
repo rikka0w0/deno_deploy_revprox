@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --unstable server.ts",
+    "deploy": "deployctl deploy --token 'ddp_TQc3lhagBmiiWBWQ6trOVmkAWmfBJD3UZ1dw' --project=revprox114514 --prod server.ts"
+  }
+}
