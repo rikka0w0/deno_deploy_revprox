@@ -1,16 +1,16 @@
 import * as utils from './utils.ts'
 
 export enum BccMsgOutboundType {
-	NEW = 0,
-	PING,
+	PING = 0,
+	NEW,
 	DATA_OUTBOUND,
 	CLOSE_OUTBOUND,
 	CLOSED_OUTBOUND,
 }
 
 export enum BccMsgInboundType {
-	CREATED = 7,
-	PONG,
+	PONG = 7,
+	CREATED,
 	DATA_INBOUND,
 	CLOSED_INBOUND,
 	CLOSE_INBOUND,

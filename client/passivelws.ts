@@ -42,7 +42,11 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 	}
 
 	send(dataBody: ArrayBufferLike | string): void {
-
+		this.replyBccMsg({
+			type: messages.BccMsgInboundType.DATA_INBOUND,
+			channelUUID: this.channelUUID,
+			data: dataBody,
+		} as messages.BccMsgDataInbound);
 	}
 
 	handleBccMsg(message: messages.BccMsg) {
@@ -53,6 +57,18 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 					channelUUID: this.channelUUID,
 				});
 				this._readyState = ReadyState.OPEN;
+				break;
+			}
+
+			case messages.BccMsgOutboundType.DATA_OUTBOUND: {
+				const dataMsg = <messages.BccMsgDataOutbound> message;
+
+				const wsEvent: MessageEventLike = {
+					type: 'message',
+					target: this,
+					data: dataMsg.data,
+				};
+				this.triggerEvent(wsEvent);
 				break;
 			}
 

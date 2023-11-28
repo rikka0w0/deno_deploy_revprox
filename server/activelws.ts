@@ -1,5 +1,6 @@
 import {
 	EventLike,
+	MessageEventLike,
 	ReadyState,
 } from '../retransmitting-websocket/src/RetransmittingWebSocket.ts'
 
@@ -82,21 +83,29 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 	}
 
 	send(dataBody: ArrayBufferLike | string): void {
-		
+		this.lowLevelSend({
+			type: messages.BccMsgOutboundType.DATA_OUTBOUND,
+			channelUUID: this.channelUUID,
+			data: dataBody,
+		} as messages.BccMsgDataOutbound);
 	}
 
 	private bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
-		if (event.data.type === messages.BccMsgInboundType.MEDIUM_BREAK) {
+		this.handleBccMsg(event.data);
+	}
+
+	private handleBccMsg(message: messages.BccMsg) {
+		if (message.type === messages.BccMsgInboundType.MEDIUM_BREAK) {
 			this.mediumBreak();
 			return;
 		}
 
-		if (event.data.channelUUID !== this.channelUUID) {
+		if (message.channelUUID !== this.channelUUID) {
 			// Ignore the message if we are not the recipient.
 			return;
 		}
 
-		switch (event.data.type) {
+		switch (message.type) {
 			case messages.BccMsgInboundType.CREATED: {
 				clearTimeout(this.establishTimeoutTask);
 				this._readyState = ReadyState.OPEN;
@@ -104,6 +113,18 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 				const wsEvent: EventLike = {
 					type: 'open',
 					target: this
+				};
+				this.triggerEvent(wsEvent);
+				break;
+			}
+
+			case messages.BccMsgInboundType.DATA_INBOUND: {
+				const dataMsg = <messages.BccMsgDataInbound> message;
+
+				const wsEvent: MessageEventLike = {
+					type: 'message',
+					target: this,
+					data: dataMsg.data,
 				};
 				this.triggerEvent(wsEvent);
 				break;

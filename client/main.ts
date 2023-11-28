@@ -5,6 +5,23 @@ import {
 import * as messages from '../messages.ts'
 import * as utils from '../utils.ts'
 
+function onChannelEstablish(lws: PassiveLogicalWebSocket) {
+	lws.onopen = () => {
+		utils.log(lws.channelUUID.substring(0, 4), 'Opened!');
+	}
+
+	lws.onmessage = (event) => {
+		utils.log(lws.channelUUID.substring(0, 4), event.data);
+
+		// Echo back
+		lws.send(event.data);
+	}
+
+	lws.onclose = (event) => {
+		utils.log(lws.channelUUID.substring(0, 4), 'Closed!', event.code, event.reason);
+	}
+}
+
 function connectToAgent() {
 	const webSocket = new WebSocket('ws://localhost:8000/ws_out');
 	webSocket.binaryType = 'arraybuffer';
@@ -14,17 +31,6 @@ function connectToAgent() {
 	function sendBccMsg(message: messages.BccMsg) {
 		const encodedMsg = messages.encodeBccMsg(message);
 		webSocket.send(encodedMsg);
-	}
-
-	function replyPongIfAny(message: messages.BccMsg, channelUUID = '') {
-		if (message.type !== messages.BccMsgOutboundType.PING) {
-			return;
-		}
-
-		sendBccMsg({
-			type: messages.BccMsgInboundType.PONG,
-			channelUUID: channelUUID,
-		});
 	}
 
 	function handleBccMsg(message: messages.BccMsg) {
@@ -44,6 +50,7 @@ function connectToAgent() {
 					const channel:PassiveLogicalWebSocket  = event.target;
 					establishedChannels.delete(channel.channelUUID);
 				});
+				onChannelEstablish(newChannel);
 			}
 		}
 

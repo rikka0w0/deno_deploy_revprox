@@ -100,7 +100,7 @@ export abstract class WebSocketBase implements WebSocketLike {
 				const msgEvent = <MessageEventLike> event;
 				if (this.onmessage)
 					this.onmessage(msgEvent);
-				this.listeners.close.forEach((listener) => callEventListener(msgEvent, listener))
+				this.listeners.message.forEach((listener) => callEventListener(msgEvent, listener))
 				break;
 			}
 		}
