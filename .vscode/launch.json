@@ -6,9 +6,9 @@
     "configurations": [
         {
             "request": "launch",
-            "name": "Launch Program",
+            "name": "Launch Server",
             "type": "node",
-            "program": "${workspaceFolder}/server.ts",
+            "program": "${workspaceFolder}/server/main.ts",
             "cwd": "${workspaceFolder}",
             "runtimeExecutable": "/home/rikka/.deno/bin/deno",
             "runtimeArgs": [
@@ -18,6 +18,27 @@
                 "--allow-all"
             ],
             "attachSimplePort": 9229
+        },
+        {
+            "request": "launch",
+            "name": "Launch Client",
+            "type": "node",
+            "program": "${workspaceFolder}/client/main.ts",
+            "cwd": "${workspaceFolder}/client",
+            "runtimeExecutable": "/home/rikka/.deno/bin/deno",
+            "runtimeArgs": [
+                "run",
+                "--inspect-wait=127.0.0.1:9228",
+                "--unstable",
+                "--allow-all"
+            ],
+            "attachSimplePort": 9228
         }
-    ]
+    ],
+    "compounds": [
+        {
+            "name": "Launch Server and Client",
+            "configurations": ["Launch Server", "Launch Client"]
+        }
+    ],
 }

@@ -1,0 +1,90 @@
+import {
+	ErrorEventLike,
+	CloseEventLike,
+	MessageEventLike,
+
+	ListenersMap,
+
+	ReadyState,
+	RetransmittingWebSocketEventMap as WebSocketEventMap,
+	WebSocketEventListenerMap,
+	WebSocketLike,
+	EventLike,
+} from '../retransmitting-websocket/src/RetransmittingWebSocket.ts'
+
+import * as messages from "../messages.ts";
+import {
+	WebSocketBase
+} from '../websocketbase.ts'
+
+export class PassiveLogicalWebSocket extends WebSocketBase {
+	private _channelUUID;
+	private replyBccMsg: (message: messages.BccMsg) => void;
+
+	public get channelUUID() {
+		return this._channelUUID;
+	}
+
+	constructor(channelUUID: string, replyBccMsg: (message: messages.BccMsg) => void) {
+		super();
+		this._channelUUID = channelUUID;
+		this.replyBccMsg = replyBccMsg;
+	}
+
+	close(code = 1000, reason = ''): void {
+		super.close(code, reason);
+
+		const channelCloseMsg: messages.BccMsgOutbound = {
+			type: messages.BccMsgOutboundType.CLOSE_OUTBOUND,
+			channelUUID: this.channelUUID,
+		}
+		this.replyBccMsg(channelCloseMsg);
+	}
+
+	send(dataBody: ArrayBufferLike | string): void {
+
+	}
+
+	handleBccMsg(message: messages.BccMsg) {
+		switch(message.type) {
+			case messages.BccMsgOutboundType.NEW: {
+				this.replyBccMsg({
+					type: messages.BccMsgInboundType.CREATED,
+					channelUUID: this.channelUUID,
+				});
+				this._readyState = ReadyState.OPEN;
+				break;
+			}
+
+			case messages.BccMsgOutboundType.CLOSE_OUTBOUND: {
+				this.replyBccMsg({
+					type: messages.BccMsgInboundType.CLOSED_INBOUND,
+					channelUUID: this.channelUUID,
+				});
+
+				this.closeInternal({
+					type: 'close',
+					code: 1000,
+					reason: '',
+					target: this,
+					wasClean: true,
+				});
+				break;
+			}
+
+			case messages.BccMsgOutboundType.CLOSED_OUTBOUND: {
+				if (this.pendingCloseEvent)
+					this.closeInternal(this.pendingCloseEvent);
+				break;
+			}
+		}
+	}
+
+	get config(): {
+		closeTimeoutMs: number,
+	} {
+		return {
+			closeTimeoutMs: 1000,
+		};
+	};
+}

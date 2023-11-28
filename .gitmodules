@@ -1,0 +1,3 @@
+[submodule "retransmitting-websocket"]
+	path = retransmitting-websocket
+	url = git@github.com:udevbe/retransmitting-websocket.git
