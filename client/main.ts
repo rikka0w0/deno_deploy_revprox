@@ -23,14 +23,13 @@ function onChannelEstablish(lws: PassiveLogicalWebSocket, destURL: string) {
 		try {
 			const webSocket = new WebSocket(destURL);
 			webSocket.binaryType = 'arraybuffer';
-
 			webSocket.onmessage = (event) => {
 				lws.send(event.data);
 			};
 	
 			webSocket.onclose = (event) => {
-				lws.close(event.code, event.reason);
 				utils.log(lws.channelUUID.substring(0, 4), 'Dest Closed!', event.code, event.reason);
+				lws.close(event.code, event.reason);
 			}
 	
 			lws.onmessage = (event) => {
@@ -38,8 +37,8 @@ function onChannelEstablish(lws: PassiveLogicalWebSocket, destURL: string) {
 			};
 	
 			lws.onclose = (event) => {
-				webSocket.close(event.code, event.reason);
 				utils.log(lws.channelUUID.substring(0, 4), 'LWS Closed!', event.code, event.reason);
+				webSocket.close();
 			}
 		} catch (error) {
 			lws.close(1001, error.message || 'Unknown error happend while connecting to: ' + destURL);

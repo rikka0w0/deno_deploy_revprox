@@ -27,30 +27,22 @@ export interface BccMsg {
 	channelUUID: string,
 }
 
-export interface BccMsgOutbound extends BccMsg {
-	type: BccMsgOutboundType,
-}
-
-export interface BccMsgInbound extends BccMsg {
-	type: BccMsgInboundType,
-}
-
 interface BccMsgWithData extends BccMsg {
 	type: BccMsgOutboundType.NEW | BccMsgOutboundType.DATA_OUTBOUND | BccMsgInboundType.DATA_INBOUND
 	data: ArrayBufferLike | string,
 }
 
-export interface BccMsgNew extends BccMsgOutbound, BccMsgWithData {
+export interface BccMsgNew extends BccMsgWithData {
 	type: BccMsgOutboundType.NEW,
 	data: string,	// The URL
 }
 
-export interface BccMsgDataOutbound extends BccMsgOutbound, BccMsgWithData {
-	type: BccMsgOutboundType.DATA_OUTBOUND,
+export interface BccMsgData extends BccMsgWithData {
+	type: BccMsgOutboundType.DATA_OUTBOUND | BccMsgInboundType.DATA_INBOUND,
 }
 
-export interface BccMsgDataInbound extends BccMsgInbound, BccMsgWithData {
-	type: BccMsgInboundType.DATA_INBOUND,
+export interface BccMsgClose extends BccMsg {
+	type: BccMsgOutboundType.CLOSE_OUTBOUND | BccMsgInboundType.CLOSE_INBOUND,
 }
 
 function isMsgContainsData(message: BccMsg) {

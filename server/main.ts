@@ -45,7 +45,7 @@ function handleWsIn(websocket: WebSocket, destURL: string): void {
 
 	lws.onclose = (event) => {
 		utils.log('LWS closed', event);
-		websocket.close(event.code, event.reason);
+		websocket.close();
 	}
 
 	websocket.onopen = () => {

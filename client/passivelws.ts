@@ -34,7 +34,7 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 	close(code = 1000, reason = ''): void {
 		super.close(code, reason);
 
-		const channelCloseMsg: messages.BccMsgInbound = {
+		const channelCloseMsg: messages.BccMsgClose = {
 			type: messages.BccMsgInboundType.CLOSE_INBOUND,
 			channelUUID: this.channelUUID,
 		}
@@ -46,7 +46,7 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 			type: messages.BccMsgInboundType.DATA_INBOUND,
 			channelUUID: this.channelUUID,
 			data: dataBody,
-		} as messages.BccMsgDataInbound);
+		} as messages.BccMsgData);
 	}
 
 	/**
@@ -71,7 +71,7 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 			}
 
 			case messages.BccMsgOutboundType.DATA_OUTBOUND: {
-				const dataMsg = <messages.BccMsgDataOutbound> message;
+				const dataMsg = <messages.BccMsgData> message;
 
 				const wsEvent: MessageEventLike = {
 					type: 'message',

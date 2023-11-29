@@ -68,7 +68,7 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 
 	close(code = 1000, reason = ''): void {
 		if (this._readyState === ReadyState.CONNECTING || this._readyState === ReadyState.OPEN) {
-			const channelCloseMsg: messages.BccMsgOutbound = {
+			const channelCloseMsg: messages.BccMsgClose = {
 				type: messages.BccMsgOutboundType.CLOSE_OUTBOUND,
 				channelUUID: this.channelUUID,
 			}
@@ -83,7 +83,7 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			type: messages.BccMsgOutboundType.DATA_OUTBOUND,
 			channelUUID: this.channelUUID,
 			data: dataBody,
-		} as messages.BccMsgDataOutbound);
+		} as messages.BccMsgData);
 	}
 
 	private handleBccMsg(message: messages.BccMsg) {
@@ -111,7 +111,7 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			}
 
 			case messages.BccMsgInboundType.DATA_INBOUND: {
-				const dataMsg = <messages.BccMsgDataInbound> message;
+				const dataMsg = <messages.BccMsgData> message;
 
 				const wsEvent: MessageEventLike = {
 					type: 'message',
