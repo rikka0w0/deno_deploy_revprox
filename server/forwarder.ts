@@ -4,7 +4,7 @@ import { ReadyState } from "../retransmitting-websocket/src/RetransmittingWebSoc
 
 const portalChannel = new BroadcastChannel("portal_outbound");
 portalChannel.addEventListener('message', (event) => {
-	console.log(event.data);
+	utils.debug(event.data);
 });
 
 function broadcast(message: messages.BccMsg) {

@@ -16,20 +16,34 @@ function getDestURL(destURL = '') {
 	return destURL.length > 0 ? destURL : config.defaultDestURL;
 }
 
-function onChannelEstablish(lws: PassiveLogicalWebSocket) {
+function onChannelEstablish(lws: PassiveLogicalWebSocket, destURL: string) {
 	lws.onopen = () => {
-		utils.log(lws.channelUUID.substring(0, 4), 'Opened!');
-	}
+		utils.log(lws.channelUUID.substring(0, 4), 'Connecting to', destURL);
 
-	lws.onmessage = (event) => {
-		utils.log(lws.channelUUID.substring(0, 4), event.data);
+		try {
+			const webSocket = new WebSocket(destURL);
+			webSocket.binaryType = 'arraybuffer';
 
-		// Echo back
-		lws.send(event.data);
-	}
-
-	lws.onclose = (event) => {
-		utils.log(lws.channelUUID.substring(0, 4), 'Closed!', event.code, event.reason);
+			webSocket.onmessage = (event) => {
+				lws.send(event.data);
+			};
+	
+			webSocket.onclose = (event) => {
+				lws.close(event.code, event.reason);
+				utils.log(lws.channelUUID.substring(0, 4), 'Dest Closed!', event.code, event.reason);
+			}
+	
+			lws.onmessage = (event) => {
+				webSocket.send(event.data);	
+			};
+	
+			lws.onclose = (event) => {
+				webSocket.close(event.code, event.reason);
+				utils.log(lws.channelUUID.substring(0, 4), 'LWS Closed!', event.code, event.reason);
+			}
+		} catch (error) {
+			lws.close(1001, error.message || 'Unknown error happend while connecting to: ' + destURL);
+		}
 	}
 }
 
@@ -61,11 +75,10 @@ function connectToAgent() {
 					const channel:PassiveLogicalWebSocket  = event.target;
 					establishedChannels.delete(channel.channelUUID);
 				});
-				onChannelEstablish(newChannel);
 
 				const msgNew = <messages.BccMsgNew> message;
 				const destURL = getDestURL(msgNew.data);
-				console.log("destURL = " + destURL);
+				onChannelEstablish(newChannel, destURL);
 			}
 		}
 

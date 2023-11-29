@@ -1,4 +1,5 @@
 export const instanceUUID = crypto.randomUUID();
+export const instanceUUIDShort = instanceUUID.substring(0, 4);
 
 export function base64ToArrayBuffer(base64Str: string): ArrayBuffer {
 	if (!base64Str) {
@@ -61,14 +62,27 @@ export function uuidStrFromBytes(buffer: ArrayBufferLike, offset = 0): string {
 	return uuid;
 }
 
+export function dateTimeString() {
+	const now = new Date();
+    
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    const formattedDateTime = `[${year}-${month}-${day} ${hours}:${minutes}:${seconds}]`;
+    return formattedDateTime;
+}
+
 export function log(...data: any[]) {
-	const shortenUUID = instanceUUID.substring(0, 4);
-	console.log(shortenUUID, ...data);
+	console.log(dateTimeString(), instanceUUIDShort, ...data);
 } 
 
 export function debug(...data: any[]) {
-	const shortenUUID = instanceUUID.substring(0, 4);
-	console.debug(shortenUUID, ...data);
+	console.debug(dateTimeString(), instanceUUIDShort, ...data);
 }
 
 export function promiseTimeOut<T=any>(request: Promise<T>, timeout: number, timeoutError?: any) {

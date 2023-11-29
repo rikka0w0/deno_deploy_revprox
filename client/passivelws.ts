@@ -34,8 +34,8 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 	close(code = 1000, reason = ''): void {
 		super.close(code, reason);
 
-		const channelCloseMsg: messages.BccMsgOutbound = {
-			type: messages.BccMsgOutboundType.CLOSE_OUTBOUND,
+		const channelCloseMsg: messages.BccMsgInbound = {
+			type: messages.BccMsgInboundType.CLOSE_INBOUND,
 			channelUUID: this.channelUUID,
 		}
 		this.replyBccMsg(channelCloseMsg);
@@ -61,6 +61,12 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 					channelUUID: this.channelUUID,
 				});
 				this._readyState = ReadyState.OPEN;
+
+				const wsEvent: EventLike = {
+					type: 'open',
+					target: this
+				};
+				this.triggerEvent(wsEvent);
 				break;
 			}
 
