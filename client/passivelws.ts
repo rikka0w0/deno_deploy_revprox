@@ -37,6 +37,8 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 		const channelCloseMsg: messages.BccMsgClose = {
 			type: messages.BccMsgInboundType.CLOSE_INBOUND,
 			channelUUID: this.channelUUID,
+			code,
+			reason,
 		}
 		this.replyBccMsg(channelCloseMsg);
 	}
@@ -83,6 +85,7 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 			}
 
 			case messages.BccMsgOutboundType.CLOSE_OUTBOUND: {
+				const closeMsg = <messages.BccMsgClose> message;
 				this.replyBccMsg({
 					type: messages.BccMsgInboundType.CLOSED_INBOUND,
 					channelUUID: this.channelUUID,
@@ -90,8 +93,8 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 
 				this.closeInternal({
 					type: 'close',
-					code: 1000,
-					reason: '',
+					code: closeMsg.code,
+					reason: closeMsg.reason,
 					target: this,
 					wasClean: true,
 				});

@@ -106,3 +106,7 @@ export function promiseTimeOut<T=any>(request: Promise<T>, timeout: number, time
 		});
 	});
 }
+
+export function canWebSocketReturn(code: number) {
+	return code === 1000 || (code >= 3000 && code < 5000);
+}

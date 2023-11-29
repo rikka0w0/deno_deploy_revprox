@@ -31,14 +31,15 @@ function onChannelEstablish(lws: PassiveLogicalWebSocket, destURL: string) {
 				utils.log(lws.channelUUID.substring(0, 4), 'Dest Closed!', event.code, event.reason);
 				lws.close(event.code, event.reason);
 			}
-	
+
 			lws.onmessage = (event) => {
 				webSocket.send(event.data);	
 			};
 	
 			lws.onclose = (event) => {
-				utils.log(lws.channelUUID.substring(0, 4), 'LWS Closed!', event.code, event.reason);
-				webSocket.close();
+				const code = utils.canWebSocketReturn(event.code) ? event.code : 1000;
+				utils.log(lws.channelUUID.substring(0, 4), 'LWS Closed with', code, event.reason);
+				webSocket.close(code, event.reason);
 			}
 		} catch (error) {
 			lws.close(1001, error.message || 'Unknown error happend while connecting to: ' + destURL);
@@ -53,6 +54,7 @@ function connectToAgent() {
 	const establishedChannels = new Map<string, PassiveLogicalWebSocket>;
 
 	function sendBccMsg(message: messages.BccMsg) {
+		utils.debug('A<O', message);
 		const encodedMsg = messages.encodeBccMsg(message);
 		webSocket.send(encodedMsg);
 	}
@@ -93,7 +95,7 @@ function connectToAgent() {
 	webSocket.onmessage = (event) => {
 		const data: ArrayBuffer = event.data;
 		const msg = messages.decodeBccMsg(new Uint8Array(data));
-		utils.log(msg);
+		utils.debug('A>O', msg);
 		handleBccMsg(msg);
 	};
 

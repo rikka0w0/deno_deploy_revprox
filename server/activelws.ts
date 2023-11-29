@@ -71,6 +71,8 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			const channelCloseMsg: messages.BccMsgClose = {
 				type: messages.BccMsgOutboundType.CLOSE_OUTBOUND,
 				channelUUID: this.channelUUID,
+				code,
+				reason,
 			}
 			this.lowLevelSend(channelCloseMsg);
 		}
@@ -123,15 +125,16 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			}
 
 			case messages.BccMsgInboundType.CLOSE_INBOUND: {
+				const closeMsg = <messages.BccMsgClose> message;
 				this.lowLevelSend({
-					type: messages.BccMsgInboundType.CLOSED_INBOUND,
+					type: messages.BccMsgOutboundType.CLOSED_OUTBOUND,
 					channelUUID: this.channelUUID,
 				});
 
 				this.closeInternal({
 					type: 'close',
-					code: 1000,
-					reason: '',
+					code: closeMsg.code,
+					reason: closeMsg.reason,
 					target: this,
 					wasClean: true,
 				});

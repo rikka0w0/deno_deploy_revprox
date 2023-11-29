@@ -21,7 +21,7 @@ function broadcast(message: messages.BccMsg) {
 	broadcastChannel.close();
 }
 
-function handleWsIn(websocket: WebSocket, destURL: string): void {
+function handleWsIn(webSocket: WebSocket, destURL: string): void {
 	const lws = new ActiveLogicalWebSocket(broadcast, 
 		(me, handler) => {
 			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
@@ -40,25 +40,26 @@ function handleWsIn(websocket: WebSocket, destURL: string): void {
 	}
 
 	lws.onmessage = (event) => {
-		websocket.send(event.data);
+		webSocket.send(event.data);
 	}
 
 	lws.onclose = (event) => {
-		utils.log('LWS closed', event);
-		websocket.close();
+		const code = utils.canWebSocketReturn(event.code) ? event.code : 1000;
+		utils.log(lws.channelUUID.substring(0, 4), 'LWS Closed with', code, event.reason);
+		webSocket.close(code, event.reason);
 	}
 
-	websocket.onopen = () => {
+	webSocket.onopen = () => {
 
 	};
 
-	websocket.onmessage = (event) => {
+	webSocket.onmessage = (event) => {
 		utils.log('WsIn Data', event.data);
 		lws.send(event.data);
 	}
 
-	websocket.onclose = (event) => {
-		lws.close();
+	webSocket.onclose = (event) => {
+		lws.close(event.code, event.reason);
 	}
 }
 
