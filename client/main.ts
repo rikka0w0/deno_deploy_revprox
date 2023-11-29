@@ -5,6 +5,17 @@ import {
 import * as messages from '../messages.ts'
 import * as utils from '../utils.ts'
 
+const config = {
+	defaultDestURL: 'default!!!',
+	forceDefaultDestURL: false,
+}
+
+function getDestURL(destURL = '') {
+	if (config.forceDefaultDestURL)
+		return config.defaultDestURL;
+	return destURL.length > 0 ? destURL : config.defaultDestURL;
+}
+
 function onChannelEstablish(lws: PassiveLogicalWebSocket) {
 	lws.onopen = () => {
 		utils.log(lws.channelUUID.substring(0, 4), 'Opened!');
@@ -51,6 +62,10 @@ function connectToAgent() {
 					establishedChannels.delete(channel.channelUUID);
 				});
 				onChannelEstablish(newChannel);
+
+				const msgNew = <messages.BccMsgNew> message;
+				const destURL = getDestURL(msgNew.data);
+				console.log("destURL = " + destURL);
 			}
 		}
 

@@ -17,7 +17,7 @@ type ConfigType = {
 
 type UnderlyingSender = (message: messages.BccMsg) => void;
 
-type BccMsgHandlerFuncType = (event: MessageEvent<messages.BccMsg>) => void;
+type BccMsgHandlerFuncType = (message: messages.BccMsg) => void;
 
 // WebSocket API via BroadcastChannel tunnel
 export class ActiveLogicalWebSocket extends WebSocketBase {
@@ -33,18 +33,13 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 
 	constructor(
 		lowLevelSend: UnderlyingSender, 
-		handlerAdder: (handler: BccMsgHandlerFuncType) => void,
-		handlerRemover: (handler: BccMsgHandlerFuncType) => void,
+		handlerAdder: (me: ActiveLogicalWebSocket, handler: BccMsgHandlerFuncType) => void,
+		destURL = ''
 		) {
 		super();
 
 		this.lowLevelSend = lowLevelSend;
-		
-		const handler = this.bccMsgHandler.bind(this);
-		handlerAdder(handler);
-		this.addEventListener('close', () => {
-			handlerRemover(handler);
-		})
+		handlerAdder(this, this.handleBccMsg.bind(this));
 
 		this._config = {
 			establishTimeoutMs: 1000,
@@ -63,9 +58,10 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			});
 		}, this.config.establishTimeoutMs);
 
-		const channelNewMsg: messages.BccMsgOutbound = {
+		const channelNewMsg: messages.BccMsgNew = {
 			type: messages.BccMsgOutboundType.NEW,
 			channelUUID: this.channelUUID,
+			data: destURL
 		}
 		this.lowLevelSend(channelNewMsg);
 	}
@@ -88,10 +84,6 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			channelUUID: this.channelUUID,
 			data: dataBody,
 		} as messages.BccMsgDataOutbound);
-	}
-
-	private bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
-		this.handleBccMsg(event.data);
 	}
 
 	private handleBccMsg(message: messages.BccMsg) {

@@ -21,11 +21,20 @@ function broadcast(message: messages.BccMsg) {
 	broadcastChannel.close();
 }
 
-function handleWsIn(websocket: WebSocket): void {
+function handleWsIn(websocket: WebSocket, destURL: string): void {
 	const lws = new ActiveLogicalWebSocket(broadcast, 
-		(handler) => broadcastChannel.addEventListener('message', handler), 
-		(handler) => broadcastChannel.removeEventListener('message', handler)
+		(me, handler) => {
+			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
+				handler(event.data);
+			}
+			broadcastChannel.addEventListener('message', bccMsgHandler), 
+			me.addEventListener('close', () => {
+				broadcastChannel.removeEventListener('message', bccMsgHandler);
+			});
+		},
+		destURL
 	);
+
 	lws.onopen = () => {
 		utils.log('LWS Opened');
 	}
@@ -53,14 +62,14 @@ function handleWsIn(websocket: WebSocket): void {
 	}
 }
 
-function handleWsUpgrade(req: Request, wsHandler: (websocket: WebSocket) => void): Response {
+function handleWsUpgrade(req: Request, wsHandler: (websocket: WebSocket, ...args: any[]) => void, ...args: any[]): Response {
 	if (req.headers.get("upgrade") != "websocket") {
 		return new Response(null, { status: 501 });
 	}
 
 	const upgradeResult = Deno.upgradeWebSocket(req);
 	upgradeResult.socket.binaryType = 'arraybuffer';
-	wsHandler(upgradeResult.socket);
+	wsHandler(upgradeResult.socket, ...args);
 	return upgradeResult.response;
 }
 
@@ -97,8 +106,10 @@ Deno.serve({port: Number(portString)}, async (req) => {
 				return handleWsUpgrade(req, handleBccWsForwarding);
 			}
 		}
-		case '/ws_in':
-			return handleWsUpgrade(req, handleWsIn);
+		case '/ws_in': {
+			const destURL = reqURL.searchParams.get('dest') || '';
+			return handleWsUpgrade(req, handleWsIn, destURL);
+		}
 		default:
 			return new Response('Http Server!', { status: 200 });
 	}

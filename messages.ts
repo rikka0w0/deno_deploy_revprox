@@ -36,8 +36,13 @@ export interface BccMsgInbound extends BccMsg {
 }
 
 interface BccMsgWithData extends BccMsg {
-	type: BccMsgOutboundType.DATA_OUTBOUND | BccMsgInboundType.DATA_INBOUND
+	type: BccMsgOutboundType.NEW | BccMsgOutboundType.DATA_OUTBOUND | BccMsgInboundType.DATA_INBOUND
 	data: ArrayBufferLike | string,
+}
+
+export interface BccMsgNew extends BccMsgOutbound, BccMsgWithData {
+	type: BccMsgOutboundType.NEW,
+	data: string,	// The URL
 }
 
 export interface BccMsgDataOutbound extends BccMsgOutbound, BccMsgWithData {
@@ -46,6 +51,12 @@ export interface BccMsgDataOutbound extends BccMsgOutbound, BccMsgWithData {
 
 export interface BccMsgDataInbound extends BccMsgInbound, BccMsgWithData {
 	type: BccMsgInboundType.DATA_INBOUND,
+}
+
+function isMsgContainsData(message: BccMsg) {
+	return message.type === BccMsgOutboundType.NEW ||
+		message.type === BccMsgOutboundType.DATA_OUTBOUND ||
+		message.type === BccMsgInboundType.DATA_INBOUND;
 }
 
 export type encodeWsDataResult = {
@@ -92,7 +103,7 @@ export function encodeBccMsg(message: BccMsg): Uint8Array {
 
 	let payloadType = BccMsgPayloadType.NO_PAYLOAD;
 	let payload: ArrayBufferLike | null = null;
-	if (message.type === BccMsgOutboundType.DATA_OUTBOUND || message.type === BccMsgInboundType.DATA_INBOUND) {
+	if (isMsgContainsData(message)) {
 		const dataMsg = <BccMsgWithData> message;
 		const encodedPayload = encodeWsData(dataMsg.data);
 		payloadType = encodedPayload.isTextMsg ? BccMsgPayloadType.UTF8_STRING : BccMsgPayloadType.BINARY_DATA;
@@ -123,7 +134,7 @@ export function decodeBccMsg(buffer: Uint8Array): BccMsg {
 	}
 	const payloadType: BccMsgPayloadType = buffer[17];
 
-	if (bccMsg.type === BccMsgOutboundType.DATA_OUTBOUND || bccMsg.type === BccMsgInboundType.DATA_INBOUND) {
+	if (isMsgContainsData(bccMsg)) {
 		const dataMsg = <BccMsgWithData> bccMsg;
 		switch (payloadType) {
 			case BccMsgPayloadType.NO_PAYLOAD:

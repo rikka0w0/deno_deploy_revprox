@@ -49,6 +49,10 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 		} as messages.BccMsgDataInbound);
 	}
 
+	/**
+	 * Only called by the underlying WebSocket!
+	 * @param message 
+	 */
 	handleBccMsg(message: messages.BccMsg) {
 		switch(message.type) {
 			case messages.BccMsgOutboundType.NEW: {
