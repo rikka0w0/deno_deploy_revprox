@@ -21,20 +21,7 @@ function broadcast(message: messages.BccMsg) {
 	broadcastChannel.close();
 }
 
-function handleWsIn(webSocket: WebSocket, destURL: string): void {
-	const lws = new ActiveLogicalWebSocket(broadcast, 
-		(me, handler) => {
-			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
-				handler(event.data);
-			}
-			broadcastChannel.addEventListener('message', bccMsgHandler), 
-			me.addEventListener('close', () => {
-				broadcastChannel.removeEventListener('message', bccMsgHandler);
-			});
-		},
-		destURL
-	);
-
+function handleWsIn(lws: ActiveLogicalWebSocket, webSocket: WebSocket) {
 	lws.onopen = () => {
 		utils.log('LWS Opened');
 	}
@@ -63,54 +50,87 @@ function handleWsIn(webSocket: WebSocket, destURL: string): void {
 	}
 }
 
-function handleWsUpgrade(req: Request, wsHandler: (websocket: WebSocket, ...args: any[]) => void, ...args: any[]): Response {
+async function handleWsInRequest(req: Request, destURL: string) {
 	if (req.headers.get("upgrade") != "websocket") {
 		return new Response(null, { status: 501 });
 	}
 
-	const upgradeResult = Deno.upgradeWebSocket(req);
-	upgradeResult.socket.binaryType = 'arraybuffer';
-	wsHandler(upgradeResult.socket, ...args);
-	return upgradeResult.response;
+	const lws = new ActiveLogicalWebSocket(broadcast, 
+		(me, handler) => {
+			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
+				handler(event.data);
+			}
+			broadcastChannel.addEventListener('message', bccMsgHandler), 
+			me.addEventListener('close', () => {
+				broadcastChannel.removeEventListener('message', bccMsgHandler);
+			});
+		},
+		destURL
+	);
+
+	const openPromise = new Promise<void>((resolve, reject) => {
+		lws.onopen = () => resolve();
+		lws.onclose = () => reject();
+	});
+
+	try {
+		await openPromise;
+
+		const upgradeResult = Deno.upgradeWebSocket(req);
+		upgradeResult.socket.binaryType = 'arraybuffer';
+		handleWsIn(lws, upgradeResult.socket);
+		return upgradeResult.response;
+	} catch {
+		// If the LWS channel cannot establish, return "Gateway Timeout"
+		return new Response(null, { status: 504 });
+	}
+}
+
+async function handleWsOutRequest(req: Request) {
+	if (req.headers.get("upgrade") != "websocket") {
+		return new Response(null, { status: 501 });
+	}
+
+	let listener: undefined | ((event: MessageEvent<messages.BccMsg>) => void) = undefined;
+	try {
+		await utils.promiseTimeOut(new Promise<void>((resolve) => {
+			function pongHandler(event: MessageEvent<messages.BccMsg>) {
+				if (event.data.type === messages.BccMsgInboundType.PONG)
+					resolve();
+			}
+			listener = pongHandler;
+			broadcastChannel.addEventListener('message', pongHandler);
+
+			broadcast({
+				type: messages.BccMsgOutboundType.PING,
+				channelUUID: utils.instanceUUID,
+			});
+		}), 1000);
+
+		if (listener)
+			broadcastChannel.removeEventListener('message', listener);
+
+		utils.log('There is a connected outlet, kick the new one!')
+		return new Response(null, { status: 409 }); // 409 = Conflict
+	} catch {
+		if (listener)
+			broadcastChannel.removeEventListener('message', listener);
+
+		const upgradeResult = Deno.upgradeWebSocket(req);
+		upgradeResult.socket.binaryType = 'arraybuffer';
+		handleBccWsForwarding(upgradeResult.socket);
+		return upgradeResult.response;
+	}
 }
 
 const portString = Deno.env.get("PORT") || '8000';
 Deno.serve({port: Number(portString)}, async (req) => {
 	const reqURL = new URL(req.url);
 	switch (reqURL.pathname) {
-		case '/ws_out': {
-			let listener: undefined | ((event: MessageEvent<messages.BccMsg>) => void) = undefined;
-			try {
-				await utils.promiseTimeOut(new Promise<void>((resolve) => {
-					function pongHandler(event: MessageEvent<messages.BccMsg>) {
-						if (event.data.type === messages.BccMsgInboundType.PONG)
-							resolve();
-					}
-					listener = pongHandler;
-					broadcastChannel.addEventListener('message', pongHandler);
-
-					broadcast({
-						type: messages.BccMsgOutboundType.PING,
-						channelUUID: utils.instanceUUID,
-					});
-				}), 1000);
-
-				if (listener)
-					broadcastChannel.removeEventListener('message', listener);
-
-				utils.log('There is a connected outlet, kick the new one!')
-				return new Response(null, { status: 409 }); // 409 = Conflict
-			} catch {
-				if (listener)
-					broadcastChannel.removeEventListener('message', listener);
-
-				return handleWsUpgrade(req, handleBccWsForwarding);
-			}
-		}
-		case '/ws_in': {
-			const destURL = reqURL.searchParams.get('dest') || '';
-			return handleWsUpgrade(req, handleWsIn, destURL);
-		}
+		case '/ws_out': 
+			return await handleWsOutRequest(req);
+		case '/ws_in':
+			return await handleWsInRequest(req, reqURL.searchParams.get('dest') || '');
 		default:
 			return new Response('Http Server!', { status: 200 });
 	}
