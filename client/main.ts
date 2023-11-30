@@ -23,6 +23,13 @@ function onChannelEstablish(lws: PassiveLogicalWebSocket, destURL: string) {
 		try {
 			const webSocket = new WebSocket(destURL);
 			webSocket.binaryType = 'arraybuffer';
+
+			// Echo back destURL to notify the pair that the WebSocket connection is ready.
+			// Afterwards, the LWS channel becomes transparent.
+			webSocket.onopen = () => {
+				lws.send(destURL);
+			}
+
 			webSocket.onmessage = (event) => {
 				lws.send(event.data);
 			};

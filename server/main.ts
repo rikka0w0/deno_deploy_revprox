@@ -68,13 +68,27 @@ async function handleWsInRequest(req: Request, destURL: string) {
 		destURL
 	);
 
-	const openPromise = new Promise<void>((resolve, reject) => {
-		lws.onopen = () => resolve();
-		lws.onclose = () => reject();
-	});
-
 	try {
-		await openPromise;
+		// Wait until the LWS channel is opened.
+		await new Promise<void>((resolve, reject) => {
+			lws.onopen = () => resolve();
+			lws.onclose = () => reject();
+		});
+
+		// Wait until the remote WebSocket at the outlet is opened.
+		await new Promise<void>((resolve, reject) => {
+			lws.onmessage = (event) => {
+				// When the remote WebSocket is opened, the outlet echos back the destURL
+				if (event.data === destURL) {
+					// Remote WebSocket is opened, the LWS channel is now transparent.
+					resolve();
+				} else {
+					// Reject if we receive garbage, this should not happen!
+					reject();
+				}
+			};
+			lws.onclose = () => reject();
+		});
 
 		const upgradeResult = Deno.upgradeWebSocket(req);
 		upgradeResult.socket.binaryType = 'arraybuffer';
