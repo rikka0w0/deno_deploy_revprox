@@ -13,13 +13,15 @@ if (Deno.env.get("DENO_REGION")) {
 	utils.log('Instance Start on NodeJS!');
 }
 
-const broadcastChannel = new BroadcastChannel('portal_inbound');
+const inboundChannel = new BroadcastChannel('portal_inbound');
+const outboundChannel = new BroadcastChannel('portal_outbound');
 
-function broadcast(message: messages.BccMsg) {
-	const broadcastChannel = new BroadcastChannel('portal_outbound');
-	broadcastChannel.postMessage(message);
-	broadcastChannel.close();
-}
+new BroadcastChannel("portal_inbound").addEventListener('message', (event) => {
+	utils.debug('A<O', event.data);
+});
+new BroadcastChannel("portal_outbound").addEventListener('message', (event) => {
+	utils.debug('A>O', event.data);
+});
 
 function handleWsIn(lws: ActiveLogicalWebSocket, webSocket: WebSocket) {
 	lws.onopen = () => {
@@ -56,14 +58,15 @@ async function handleWsInRequest(req: Request, destURL: string) {
 	}
 
 	let establishedPromise: Promise<void> | null = null;
-	const lws = new ActiveLogicalWebSocket(broadcast, 
+	const lws = new ActiveLogicalWebSocket(
+		(message) => outboundChannel.postMessage(message), 
 		(me, handler) => {
 			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
 				handler(event.data);
 			}
-			broadcastChannel.addEventListener('message', bccMsgHandler), 
+			inboundChannel.addEventListener('message', bccMsgHandler), 
 			me.addEventListener('close', () => {
-				broadcastChannel.removeEventListener('message', bccMsgHandler);
+				inboundChannel.removeEventListener('message', bccMsgHandler);
 			});
 
 			establishedPromise = new Promise<void>((resolve, reject) => {
@@ -110,22 +113,22 @@ async function handleWsOutRequest(req: Request) {
 					resolve();
 			}
 			listener = pongHandler;
-			broadcastChannel.addEventListener('message', pongHandler);
+			inboundChannel.addEventListener('message', pongHandler);
 
-			broadcast({
+			outboundChannel.postMessage({
 				type: messages.BccMsgOutboundType.PING,
 				channelUUID: utils.instanceUUID,
 			});
 		}), 1000);
 
 		if (listener)
-			broadcastChannel.removeEventListener('message', listener);
+			inboundChannel.removeEventListener('message', listener);
 
 		utils.log('There is a connected outlet, kick the new one!')
 		return new Response(null, { status: 409 }); // 409 = Conflict
 	} catch {
 		if (listener)
-			broadcastChannel.removeEventListener('message', listener);
+			inboundChannel.removeEventListener('message', listener);
 
 		const upgradeResult = Deno.upgradeWebSocket(req);
 		upgradeResult.socket.binaryType = 'arraybuffer';
