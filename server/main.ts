@@ -55,6 +55,7 @@ async function handleWsInRequest(req: Request, destURL: string) {
 		return new Response(null, { status: 501 });
 	}
 
+	let establishedPromise: Promise<void> | null = null;
 	const lws = new ActiveLogicalWebSocket(broadcast, 
 		(me, handler) => {
 			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
@@ -64,31 +65,27 @@ async function handleWsInRequest(req: Request, destURL: string) {
 			me.addEventListener('close', () => {
 				broadcastChannel.removeEventListener('message', bccMsgHandler);
 			});
+
+			establishedPromise = new Promise<void>((resolve, reject) => {
+				me.onmessage = (event) => {
+					// When the remote WebSocket is opened, the outlet echos back the destURL
+					if (event.data === destURL) {
+						// Remote WebSocket is opened, the LWS channel is now transparent.
+						resolve();
+					} else {
+						// Reject if we receive garbage, this should not happen!
+						reject();
+					}
+				};
+				me.onclose = () => reject();
+			});
 		},
 		destURL
 	);
 
 	try {
-		// Wait until the LWS channel is opened.
-		await new Promise<void>((resolve, reject) => {
-			lws.onopen = () => resolve();
-			lws.onclose = () => reject();
-		});
-
 		// Wait until the remote WebSocket at the outlet is opened.
-		await new Promise<void>((resolve, reject) => {
-			lws.onmessage = (event) => {
-				// When the remote WebSocket is opened, the outlet echos back the destURL
-				if (event.data === destURL) {
-					// Remote WebSocket is opened, the LWS channel is now transparent.
-					resolve();
-				} else {
-					// Reject if we receive garbage, this should not happen!
-					reject();
-				}
-			};
-			lws.onclose = () => reject();
-		});
+		await establishedPromise;
 
 		const upgradeResult = Deno.upgradeWebSocket(req);
 		upgradeResult.socket.binaryType = 'arraybuffer';
