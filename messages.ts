@@ -219,6 +219,7 @@ export function createOrderedReceiver(handler: BccMsgConsumer, channelUUID: stri
 
 		if (message.id == id) {
 			// First, we process the current incoming message.
+			log(`Handle:`, message);
 			handler(message);
 
 			// Then, increase our receiving id expectation by 1.
@@ -233,6 +234,7 @@ export function createOrderedReceiver(handler: BccMsgConsumer, channelUUID: stri
 					recvBuf.unshift(bufferedMsg);
 					return;
 				}
+				log(`Handle:`, bufferedMsg);
 				handler(bufferedMsg);
 				id++;
 				bufferedMsg = recvBuf.shift();
@@ -245,16 +247,16 @@ export function createOrderedReceiver(handler: BccMsgConsumer, channelUUID: stri
 				if (isMsgIdLaterThan(bufferedMsg.id, message.id)) {
 					break;
 				} else if (bufferedMsg.id === message.id) {
-					utils.log(`A>O FWD Duplicated message found in buffer: ${message.id}`);
+					utils.warn(`A>O Dupe message: ${message.id}, expect: ${id}`);
 					return;
 				}
 			}
+			log(`Enqueue (expect ${id}):`, message);
 			recvBuf.splice(i, 0, message);
-			log(`Enqueue out-of-order message(expect ${id})`, message);
 		} else {
 			// event.data.id < recvId
 			// We received a duplicated message, discard
-			utils.log(`A>O FWD Duplicated message: ${message.id}, current: ${id}`);
+			utils.warn(`A>O Late message: ${message.id}, expect: ${id}`);
 		}
 	}
 }

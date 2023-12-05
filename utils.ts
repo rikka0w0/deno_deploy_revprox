@@ -77,6 +77,10 @@ export function dateTimeString() {
     return formattedDateTime;
 }
 
+export function warn(...data: any[]) {
+	console.warn(dateTimeString(), instanceUUIDShort, ...data);
+} 
+
 export function log(...data: any[]) {
 	console.log(dateTimeString(), instanceUUIDShort, ...data);
 } 

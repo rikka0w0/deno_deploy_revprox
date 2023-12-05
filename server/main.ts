@@ -54,7 +54,7 @@ async function handleWsInRequest(req: Request, destURL: string) {
 		return new Response(null, { status: 501 });
 	}
 
-	let establishedPromise: Promise<void> | null = null;
+	let establishedPromise = Promise.resolve();
 	const lws = new ActiveLogicalWebSocket(
 		(message) => {
 			messages.log('A>O AGT', message);
