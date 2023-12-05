@@ -1,5 +1,7 @@
 {
   "tasks": {
+    "client": "deno run --allow-net --allow-env --unstable client/main.ts",
+    "server": "deno run --allow-net --allow-env --unstable server/main.ts",
     "deploy": "deployctl deploy --token 'ddp_TQc3lhagBmiiWBWQ6trOVmkAWmfBJD3UZ1dw' --project=revprox114514 --prod server/main.ts"
   }
 }

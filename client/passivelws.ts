@@ -18,50 +18,32 @@ import {
 } from '../websocketbase.ts'
 
 export class PassiveLogicalWebSocket extends WebSocketBase {
-	private _channelUUID;
-	private replyBccMsg: (message: messages.BccMsg) => void;
+	public readonly channelUUID: string;
+	private readonly orderedSend: messages.BccMsgSender;
+	readonly handleDisorderdBccMsg: messages.BccMsgConsumer;
 
-	public get channelUUID() {
-		return this._channelUUID;
-	}
 
-	constructor(channelUUID: string, replyBccMsg: (message: messages.BccMsg) => void) {
+	constructor(channelUUID: string, lowLevelSend: messages.BccMsgConsumer) {
 		super();
-		this._channelUUID = channelUUID;
-		this.replyBccMsg = replyBccMsg;
+		this.channelUUID = channelUUID;
+		this.handleDisorderdBccMsg = messages.createOrderedReceiver(this.handleBccMsg.bind(this), channelUUID);
+		this.orderedSend = messages.createOrderedSender(lowLevelSend, channelUUID);
 	}
 
 	close(code = 1000, reason = ''): void {
 		super.close(code, reason);
 
-		const channelCloseMsg: messages.BccMsgClose = {
-			type: messages.BccMsgInboundType.CLOSE_INBOUND,
-			channelUUID: this.channelUUID,
-			code,
-			reason,
-		}
-		this.replyBccMsg(channelCloseMsg);
+		this.orderedSend(messages.BccMsgType.CLOSE_INBOUND, {code, reason});
 	}
 
 	send(dataBody: ArrayBufferLike | string): void {
-		this.replyBccMsg({
-			type: messages.BccMsgInboundType.DATA_INBOUND,
-			channelUUID: this.channelUUID,
-			data: dataBody,
-		} as messages.BccMsgData);
+		this.orderedSend(messages.BccMsgType.DATA_INBOUND, dataBody);
 	}
 
-	/**
-	 * Only called by the underlying WebSocket!
-	 * @param message 
-	 */
-	handleBccMsg(message: messages.BccMsg) {
+	private handleBccMsg(message: messages.BccMsg) {
 		switch(message.type) {
-			case messages.BccMsgOutboundType.NEW: {
-				this.replyBccMsg({
-					type: messages.BccMsgInboundType.CREATED,
-					channelUUID: this.channelUUID,
-				});
+			case messages.BccMsgType.NEW: {
+				this.orderedSend(messages.BccMsgType.CREATED, undefined);
 				this._readyState = ReadyState.OPEN;
 
 				const wsEvent: EventLike = {
@@ -72,24 +54,21 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 				break;
 			}
 
-			case messages.BccMsgOutboundType.DATA_OUTBOUND: {
-				const dataMsg = <messages.BccMsgData> message;
+			case messages.BccMsgType.DATA_OUTBOUND: {
+				const data = messages.getBccMsgData<messages.BccMsgType.DATA_OUTBOUND>(message);
 
 				const wsEvent: MessageEventLike = {
 					type: 'message',
 					target: this,
-					data: dataMsg.data,
+					data,
 				};
 				this.triggerEvent(wsEvent);
 				break;
 			}
 
-			case messages.BccMsgOutboundType.CLOSE_OUTBOUND: {
-				const closeMsg = <messages.BccMsgClose> message;
-				this.replyBccMsg({
-					type: messages.BccMsgInboundType.CLOSED_INBOUND,
-					channelUUID: this.channelUUID,
-				});
+			case messages.BccMsgType.CLOSE_OUTBOUND: {
+				const closeMsg = messages.getBccMsgData<messages.BccMsgType.CLOSE_OUTBOUND>(message);
+				this.orderedSend(messages.BccMsgType.CLOSED_INBOUND, undefined);
 
 				this.closeInternal({
 					type: 'close',
@@ -101,7 +80,7 @@ export class PassiveLogicalWebSocket extends WebSocketBase {
 				break;
 			}
 
-			case messages.BccMsgOutboundType.CLOSED_OUTBOUND: {
+			case messages.BccMsgType.CLOSED_OUTBOUND: {
 				if (this.pendingCloseEvent)
 					this.closeInternal(this.pendingCloseEvent);
 				break;

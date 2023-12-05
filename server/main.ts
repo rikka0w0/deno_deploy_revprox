@@ -16,13 +16,6 @@ if (Deno.env.get("DENO_REGION")) {
 const inboundChannel = new BroadcastChannel('portal_inbound');
 const outboundChannel = new BroadcastChannel('portal_outbound');
 
-new BroadcastChannel("portal_inbound").addEventListener('message', (event) => {
-	utils.debug('A<O', event.data);
-});
-new BroadcastChannel("portal_outbound").addEventListener('message', (event) => {
-	utils.debug('A>O', event.data);
-});
-
 function handleWsIn(lws: ActiveLogicalWebSocket, webSocket: WebSocket) {
 	lws.onopen = () => {
 		utils.log('LWS Opened');
@@ -43,12 +36,16 @@ function handleWsIn(lws: ActiveLogicalWebSocket, webSocket: WebSocket) {
 	};
 
 	webSocket.onmessage = (event) => {
-		utils.log('WsIn Data', event.data);
 		lws.send(event.data);
 	}
 
 	webSocket.onclose = (event) => {
+		utils.log(`WsIn websocket close: ${event.code} ${event.reason}`)
 		lws.close(event.code, event.reason);
+	}
+
+	webSocket.onerror = (event) => {
+		utils.log(`WsIn websocket error: ${event}`)
 	}
 }
 
@@ -59,9 +56,13 @@ async function handleWsInRequest(req: Request, destURL: string) {
 
 	let establishedPromise: Promise<void> | null = null;
 	const lws = new ActiveLogicalWebSocket(
-		(message) => outboundChannel.postMessage(message), 
+		(message) => {
+			messages.log('A>O AGT', message);
+			outboundChannel.postMessage(message);
+		},
 		(me, handler) => {
 			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {
+				messages.log('A<O AGT', event.data);
 				handler(event.data);
 			}
 			inboundChannel.addEventListener('message', bccMsgHandler), 
@@ -109,16 +110,13 @@ async function handleWsOutRequest(req: Request) {
 	try {
 		await utils.promiseTimeOut(new Promise<void>((resolve) => {
 			function pongHandler(event: MessageEvent<messages.BccMsg>) {
-				if (event.data.type === messages.BccMsgInboundType.PONG)
+				if (event.data.type === messages.BccMsgType.PONG)
 					resolve();
 			}
 			listener = pongHandler;
 			inboundChannel.addEventListener('message', pongHandler);
 
-			outboundChannel.postMessage({
-				type: messages.BccMsgOutboundType.PING,
-				channelUUID: utils.instanceUUID,
-			});
+			messages.createOrderedSender(outboundChannel.postMessage, utils.instanceUUID)(messages.BccMsgType.PING, undefined);
 		}), 1000);
 
 		if (listener)

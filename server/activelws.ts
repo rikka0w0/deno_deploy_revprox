@@ -15,31 +15,28 @@ type ConfigType = {
 	closeTimeoutMs: number,
 }
 
-type UnderlyingSender = (message: messages.BccMsg) => void;
-
-type BccMsgHandlerFuncType = (message: messages.BccMsg) => void;
-
 // WebSocket API via BroadcastChannel tunnel
 export class ActiveLogicalWebSocket extends WebSocketBase {
 	public readonly channelUUID = crypto.randomUUID();
 	private establishTimeoutTask?: ReturnType<typeof setTimeout>;
 
 	private _config: ConfigType;
-	private lowLevelSend: UnderlyingSender;
+	private readonly orderedSend: messages.BccMsgSender;
 
 	get config(): ConfigType {
 		return this._config;
 	}
 
 	constructor(
-		lowLevelSend: UnderlyingSender, 
-		handlerAdder: (me: ActiveLogicalWebSocket, handler: BccMsgHandlerFuncType) => void,
+		lowLevelSend: messages.BccMsgConsumer, 
+		handlerAdder: (me: ActiveLogicalWebSocket, handler: messages.BccMsgConsumer) => void,
 		destURL = ''
 		) {
 		super();
 
-		this.lowLevelSend = lowLevelSend;
-		handlerAdder(this, this.handleBccMsg.bind(this));
+		this.orderedSend = messages.createOrderedSender(lowLevelSend, this.channelUUID);
+		const onDisorderedMsgArrive = messages.createOrderedReceiver(this.handleBccMsg.bind(this), this.channelUUID);
+		handlerAdder(this, onDisorderedMsgArrive);
 
 		this._config = {
 			establishTimeoutMs: 1000,
@@ -58,49 +55,28 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 			});
 		}, this.config.establishTimeoutMs);
 
-		const channelNewMsg: messages.BccMsgNew = {
-			type: messages.BccMsgOutboundType.NEW,
-			channelUUID: this.channelUUID,
-			data: destURL
-		}
-		this.lowLevelSend(channelNewMsg);
+		this.orderedSend(messages.BccMsgType.NEW, destURL);
 	}
 
 	close(code = 1000, reason = ''): void {
 		if (this._readyState === ReadyState.CONNECTING || this._readyState === ReadyState.OPEN) {
-			const channelCloseMsg: messages.BccMsgClose = {
-				type: messages.BccMsgOutboundType.CLOSE_OUTBOUND,
-				channelUUID: this.channelUUID,
-				code,
-				reason,
-			}
-			this.lowLevelSend(channelCloseMsg);
+			this.orderedSend(messages.BccMsgType.CLOSE_OUTBOUND, {code, reason});
 		}
 
 		super.close(code, reason);
 	}
 
 	send(dataBody: ArrayBufferLike | string): void {
-		this.lowLevelSend({
-			type: messages.BccMsgOutboundType.DATA_OUTBOUND,
-			channelUUID: this.channelUUID,
-			data: dataBody,
-		} as messages.BccMsgData);
+		this.orderedSend(messages.BccMsgType.DATA_OUTBOUND, dataBody);
 	}
 
 	private handleBccMsg(message: messages.BccMsg) {
-		if (message.type === messages.BccMsgInboundType.MEDIUM_BREAK) {
-			this.mediumBreak();
-			return;
-		}
-
-		if (message.channelUUID !== this.channelUUID) {
-			// Ignore the message if we are not the recipient.
-			return;
-		}
-
 		switch (message.type) {
-			case messages.BccMsgInboundType.CREATED: {
+			case messages.BccMsgType.MEDIUM_BREAK:
+				this.mediumBreak();
+				return;
+
+			case messages.BccMsgType.CREATED: {
 				clearTimeout(this.establishTimeoutTask);
 				this._readyState = ReadyState.OPEN;
 
@@ -112,24 +88,19 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 				break;
 			}
 
-			case messages.BccMsgInboundType.DATA_INBOUND: {
-				const dataMsg = <messages.BccMsgData> message;
-
+			case messages.BccMsgType.DATA_INBOUND: {
 				const wsEvent: MessageEventLike = {
 					type: 'message',
 					target: this,
-					data: dataMsg.data,
+					data: messages.getBccMsgData<messages.BccMsgType.DATA_INBOUND>(message),
 				};
 				this.triggerEvent(wsEvent);
 				break;
 			}
 
-			case messages.BccMsgInboundType.CLOSE_INBOUND: {
-				const closeMsg = <messages.BccMsgClose> message;
-				this.lowLevelSend({
-					type: messages.BccMsgOutboundType.CLOSED_OUTBOUND,
-					channelUUID: this.channelUUID,
-				});
+			case messages.BccMsgType.CLOSE_INBOUND: {
+				const closeMsg = messages.getBccMsgData<messages.BccMsgType.CLOSE_INBOUND>(message)
+				this.orderedSend(messages.BccMsgType.CLOSED_OUTBOUND, undefined);
 
 				this.closeInternal({
 					type: 'close',
@@ -141,7 +112,7 @@ export class ActiveLogicalWebSocket extends WebSocketBase {
 				break;
 			}
 
-			case messages.BccMsgInboundType.CLOSED_INBOUND: {
+			case messages.BccMsgType.CLOSED_INBOUND: {
 				if (this.pendingCloseEvent)
 					this.closeInternal(this.pendingCloseEvent);
 				break;

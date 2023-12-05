@@ -5,6 +5,9 @@ import {
 import * as messages from '../messages.ts'
 import * as utils from '../utils.ts'
 
+const agentURL = Deno.env.get("AGENT_URL") || 'ws://localhost:8000/ws_out';
+utils.log(`Agent URL is: ${agentURL}`);
+
 const config = {
 	defaultDestURL: 'default!!!',
 	forceDefaultDestURL: false,
@@ -55,27 +58,25 @@ function onChannelEstablish(lws: PassiveLogicalWebSocket, destURL: string) {
 }
 
 function connectToAgent() {
-	const webSocket = new WebSocket('ws://localhost:8000/ws_out');
+	const webSocket = new WebSocket(agentURL);
 	webSocket.binaryType = 'arraybuffer';
 
 	const establishedChannels = new Map<string, PassiveLogicalWebSocket>;
 
 	function sendBccMsg(message: messages.BccMsg) {
-		utils.debug('A<O', message);
+		messages.log('A<O', message);
 		const encodedMsg = messages.encodeBccMsg(message);
 		webSocket.send(encodedMsg);
 	}
 
 	function handleBccMsg(message: messages.BccMsg) {
 		// Always handle Ping-Pong
-		if (message.type === messages.BccMsgOutboundType.PING) {
-			sendBccMsg({
-				type: messages.BccMsgInboundType.PONG,
-				channelUUID: utils.instanceUUID,
-			});
+		if (message.type === messages.BccMsgType.PING) {
+			messages.createOrderedSender(sendBccMsg, utils.instanceUUID)(messages.BccMsgType.PONG, undefined);
+			return;
 		}
 
-		if (message.type == messages.BccMsgOutboundType.NEW) {
+		if (message.type == messages.BccMsgType.NEW) {
 			if (!(message.channelUUID in establishedChannels)) {
 				const newChannel = new PassiveLogicalWebSocket(message.channelUUID, sendBccMsg);
 				establishedChannels.set(message.channelUUID, newChannel);
@@ -84,15 +85,15 @@ function connectToAgent() {
 					establishedChannels.delete(channel.channelUUID);
 				});
 
-				const msgNew = <messages.BccMsgNew> message;
-				const destURL = getDestURL(msgNew.data);
+				const dataNew = messages.getBccMsgData<messages.BccMsgType.NEW>(message);
+				const destURL = getDestURL(dataNew);
 				onChannelEstablish(newChannel, destURL);
 			}
 		}
 
 		const channel = establishedChannels.get(message.channelUUID);
 		if (channel)
-			channel.handleBccMsg(message);
+			channel.handleDisorderdBccMsg(message);
 	}
 
 	webSocket.onopen = () => {
@@ -102,7 +103,7 @@ function connectToAgent() {
 	webSocket.onmessage = (event) => {
 		const data: ArrayBuffer = event.data;
 		const msg = messages.decodeBccMsg(new Uint8Array(data));
-		utils.debug('A>O', msg);
+		messages.log('A>O', msg);
 		handleBccMsg(msg);
 	};
 

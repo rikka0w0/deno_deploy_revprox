@@ -5,13 +5,6 @@ import { ReadyState } from "../retransmitting-websocket/src/RetransmittingWebSoc
 const inboundChannel = new BroadcastChannel('portal_inbound');
 const outboundChannel = new BroadcastChannel('portal_outbound');
 
-new BroadcastChannel("portal_inbound").addEventListener('message', (event) => {
-	utils.debug('A<O', event.data);
-});
-new BroadcastChannel("portal_outbound").addEventListener('message', (event) => {
-	utils.debug('A>O', event.data);
-});
-
 function sendToAgent(message: messages.BccMsg) {
 	inboundChannel.postMessage(message);
 }
@@ -21,7 +14,6 @@ function sendToAgent(message: messages.BccMsg) {
  * @param webSocket 
  */
 export function handleBccWsForwarding(webSocket: WebSocket):void {
-
 	if (webSocket.binaryType !== 'arraybuffer') {
 		throw new Error('Only ArrayBuffer WebSockets are supported');
 	}
@@ -33,6 +25,7 @@ export function handleBccWsForwarding(webSocket: WebSocket):void {
 		} else {
 			// Underlying WebSocket is closed or closing
 			// Discard the message
+			utils.log("handleA2OMessage discard");
 		}
 	}
 
@@ -44,8 +37,10 @@ export function handleBccWsForwarding(webSocket: WebSocket):void {
 	webSocket.onclose = (event: CloseEvent) => {
 		utils.debug("Outlet offline!");
 		sendToAgent({
-			type: messages.BccMsgInboundType.MEDIUM_BREAK,
-			channelUUID: ''
+			type: messages.BccMsgType.MEDIUM_BREAK,
+			id: 0,
+			channelUUID: '',
+			data: undefined,
 		})
 		outboundChannel.removeEventListener('message', handleA2OMessage);
 	}

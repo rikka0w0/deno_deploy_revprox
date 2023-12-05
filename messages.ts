@@ -1,88 +1,90 @@
 import * as utils from './utils.ts'
 
-export enum BccMsgOutboundType {
-	PING = 0,
-	NEW,
+/**
+ * byte 7: level message, 0 = low, 1 = high
+ * byte 6: direction, 0 = A>O, 1 = A<O
+ * byte 5-0: message identifier
+ */
+export enum BccMsgType {
+	PING = 0b00000000,
+
+	PONG = 0b01000000,
+	MEDIUM_BREAK = 0b01000001,
+
+	NEW = 0b10000000,
 	DATA_OUTBOUND,
 	CLOSE_OUTBOUND,
 	CLOSED_OUTBOUND,
-}
 
-export enum BccMsgInboundType {
-	PONG = 7,
-	CREATED,
+	CREATED = 0b11000000,
 	DATA_INBOUND,
 	CLOSED_INBOUND,
 	CLOSE_INBOUND,
-	MEDIUM_BREAK,
 }
 
-export type BccMsgType = BccMsgOutboundType | BccMsgInboundType;
+type BccMsgClose = {
+	code: number,
+	reason: string
+}
+
+interface BccMsgDataMap {
+	[BccMsgType.PING]: undefined,
+
+	[BccMsgType.PONG]: undefined,
+	[BccMsgType.MEDIUM_BREAK]: undefined,
+
+	[BccMsgType.NEW]: string,
+	[BccMsgType.DATA_OUTBOUND]: ArrayBufferLike | string,
+	[BccMsgType.CLOSE_OUTBOUND]: BccMsgClose,
+	[BccMsgType.CLOSED_OUTBOUND]: undefined,
+
+	[BccMsgType.CREATED]: undefined,
+	[BccMsgType.DATA_INBOUND]: ArrayBufferLike | string,
+	[BccMsgType.CLOSED_INBOUND]: undefined,
+	[BccMsgType.CLOSE_INBOUND]: BccMsgClose,
+}
+
+type BccMsgTypeWithData = BccMsgType.NEW | BccMsgType.DATA_OUTBOUND | BccMsgType.DATA_INBOUND;
+type BccMsgTypeClose = BccMsgType.CLOSE_INBOUND | BccMsgType.CLOSE_OUTBOUND;
 
 /**
  * BroadcastChannelMessage
  */
-export interface BccMsg {
-	type: BccMsgOutboundType | BccMsgInboundType,
+export interface BccMsg<T extends keyof BccMsgDataMap = BccMsgType> {
+	type: T,
+	id: number,
 	channelUUID: string,
+	data: BccMsgDataMap[T],
 }
 
-interface BccMsgWithData extends BccMsg {
-	type: BccMsgOutboundType.NEW | BccMsgOutboundType.DATA_OUTBOUND | BccMsgInboundType.DATA_INBOUND
-	data: ArrayBufferLike | string,
-}
-
-export interface BccMsgNew extends BccMsgWithData {
-	type: BccMsgOutboundType.NEW,
-	data: string,	// The URL
-}
-
-export interface BccMsgData extends BccMsgWithData {
-	type: BccMsgOutboundType.DATA_OUTBOUND | BccMsgInboundType.DATA_INBOUND,
-}
-
-export interface BccMsgClose extends BccMsg {
-	type: BccMsgOutboundType.CLOSE_OUTBOUND | BccMsgInboundType.CLOSE_INBOUND,
-	code: number,
-	reason: string,
+export function getBccMsgData<T extends keyof BccMsgDataMap>(message: BccMsg): BccMsgDataMap[T] {
+	return (message as BccMsg<T>).data;
 }
 
 function isMsgContainsData(message: BccMsg) {
-	return message.type === BccMsgOutboundType.NEW ||
-		message.type === BccMsgOutboundType.DATA_OUTBOUND ||
-		message.type === BccMsgInboundType.DATA_INBOUND;
+	return message.type === BccMsgType.NEW ||
+		message.type === BccMsgType.DATA_OUTBOUND ||
+		message.type === BccMsgType.DATA_INBOUND;
 }
 
 function isMsgClose(message: BccMsg) {
-	return message.type === BccMsgOutboundType.CLOSE_OUTBOUND 
-		|| message.type === BccMsgInboundType.CLOSE_INBOUND;
+	return message.type === BccMsgType.CLOSE_OUTBOUND 
+		|| message.type === BccMsgType.CLOSE_INBOUND;
 }
 
-export type encodeWsDataResult = {
-	encodedData: ArrayBufferLike,
-	isTextMsg: boolean,
+/**
+ * Low level messages does not increase rx or tx counter.
+ * @param message 
+ * @returns 
+ */
+export function isMsgLowLevel(message: BccMsg) {
+	return message.type === BccMsgType.PING ||
+		message.type === BccMsgType.PONG ||
+		message.type === BccMsgType.MEDIUM_BREAK;
 }
 
-enum BccMsgPayloadType {
-	BINARY_DATA = 0,
-	UTF8_STRING,
-}
-
-function encodeWsData(data: ArrayBufferLike | string): encodeWsDataResult {
-	let encodedData: ArrayBufferLike;
-	let isTextMsg: boolean;
-
-	if (typeof data === 'string') {
-		const textEncoder = new TextEncoder();
-		encodedData = textEncoder.encode(data).buffer;
-		isTextMsg = true;
-	} else {
-		encodedData = data;
-		isTextMsg = false;
-	}
-
-	return { encodedData, isTextMsg };
-}
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
 /**
  * Encode a BccMsg into a WebSocket message.
@@ -91,7 +93,8 @@ function encodeWsData(data: ArrayBufferLike | string): encodeWsDataResult {
  * 
  * Header:
  * 1. 1 byte of message type
- * 2. 16 bytes of uuid
+ * 2. 2 byte of message id, big-endian
+ * 3. 16 bytes of uuid
  * 
  * New/Data Message:
  * 1. 1 byte of data type
@@ -107,75 +110,169 @@ export function encodeBccMsg(message: BccMsg): Uint8Array {
 	const channelUUID = utils.uuidStrToBytes(message.channelUUID);
 	// We simply drop the direction field
 
-	let payloadType = BccMsgPayloadType.BINARY_DATA;
+	let isBinary = true;
 	let payload: ArrayBufferLike | null = null;
-	let msgLength = 17;
+	let msgLength = 19;
 	if (isMsgContainsData(message)) {
-		const dataMsg = <BccMsgWithData> message;
-		const encodedPayload = encodeWsData(dataMsg.data);
-		payloadType = encodedPayload.isTextMsg ? BccMsgPayloadType.UTF8_STRING : BccMsgPayloadType.BINARY_DATA;
-		payload = encodedPayload.encodedData;
+		const data = getBccMsgData<BccMsgTypeWithData>(message);
+		if (typeof data === 'string') {
+			payload = textEncoder.encode(data).buffer;
+			isBinary = false;
+		} else {
+			payload = data;
+			isBinary = true;
+		}
 		msgLength += 1 + payload.byteLength;
 	} else if (isMsgClose(message)) {
-		const closeMsg = <BccMsgClose> message;
-		const textEncoder = new TextEncoder();
+		const closeMsg = getBccMsgData<BccMsgTypeClose>(message);
 		payload = textEncoder.encode(closeMsg.reason).buffer;
 		msgLength += 2 + payload.byteLength;
 	}
 
 	const buffer = new Uint8Array(msgLength);
 	buffer[0] = type;
-	buffer.set(new Uint8Array(channelUUID), 1);
+	buffer[1] = (message.id >> 8) & 0xFF;
+	buffer[2] = message.id & 0xFF;
+	buffer.set(new Uint8Array(channelUUID), 3);
 
 	if (isMsgContainsData(message)) {
-		buffer[17] = payloadType;
+		buffer[19] = isBinary ? 1 : 0;
 		if (payload != null) {
-			buffer.set(new Uint8Array(payload), 18);
+			buffer.set(new Uint8Array(payload), 20);
 		}
 	} else if (isMsgClose(message)) {
-		const closeMsg = <BccMsgClose> message;
-		buffer[17] = (closeMsg.code >> 8) & 0xFF;
-		buffer[18] = closeMsg.code & 0xFF;
+		const closeMsg = getBccMsgData<BccMsgTypeClose>(message);
+		buffer[19] = (closeMsg.code >> 8) & 0xFF;
+		buffer[20] = closeMsg.code & 0xFF;
 		if (payload != null) {
-			buffer.set(new Uint8Array(payload), 19);
+			buffer.set(new Uint8Array(payload), 21);
 		}
 	}
 	return buffer;
 }
 
 export function decodeBccMsg(buffer: Uint8Array): BccMsg {
-	const type:number = buffer[0];
-	const bccMsg = {
-		type,
-		channelUUID: utils.uuidStrFromBytes(buffer, 1),
-	}
-	const payloadType: BccMsgPayloadType = buffer[17];
+	const bccMsg: BccMsg = {
+		type: buffer[0],
+		id: ((buffer[1] << 8) | buffer[2]) & 0xFFFF,
+		channelUUID: utils.uuidStrFromBytes(buffer, 3),
+		data: undefined
+	};
 
 	if (isMsgContainsData(bccMsg)) {
-		const dataMsg = <BccMsgWithData> bccMsg;
-		switch (payloadType) {
-			case BccMsgPayloadType.BINARY_DATA: {
-				const payload = new Uint8Array(buffer.byteLength - 18);
-				payload.set(buffer.slice(18), 0);
-				dataMsg.data = payload;
-				break;
-			}
-
-			case BccMsgPayloadType.UTF8_STRING: {
-				const textDecoder = new TextDecoder();
-				const text = textDecoder.decode(buffer.slice(18));
-				dataMsg.data = text;
-				break;
-			}
+		const isBinary = buffer[19] > 0;
+		if (isBinary) {
+			const payload = new Uint8Array(buffer.byteLength - 20);
+			payload.set(buffer.slice(20), 0);
+			bccMsg.data = payload;
+		} else {
+			bccMsg.data = textDecoder.decode(buffer.slice(20));
 		}
 	} else if (isMsgClose(bccMsg)) {
-		const closeMsg = <BccMsgClose> bccMsg;
-		const textDecoder = new TextDecoder();
-		closeMsg.code = buffer[17];
-		closeMsg.code <<= 8;
-		closeMsg.code |= buffer[18];
-		closeMsg.reason = textDecoder.decode(buffer.slice(19));
+		bccMsg.data = {
+			code: ((buffer[19] << 8) | buffer[20]) & 0xFFFF,
+			reason: textDecoder.decode(buffer.slice(21)),
+		}
 	}
 
 	return bccMsg;
+}
+
+export type BccMsgSender = <T extends keyof BccMsgDataMap>(type: T, data: BccMsgDataMap[T]) => void;
+
+export function createOrderedSender(lowLevelSend: (message: BccMsg) => void, channelUUID: string): BccMsgSender {
+	let id = 0;
+
+	return <T extends keyof BccMsgDataMap>(type: T, data: BccMsgDataMap[T]) => {
+		const bccMsg:BccMsg<T> = {
+			type,
+			id,
+			channelUUID,
+			data,
+		}
+		id++;
+		lowLevelSend(bccMsg);
+	};
+}
+
+export type BccMsgConsumer = (message: BccMsg) => void;
+
+function isMsgIdLaterThan(msgId: number, ref: number) {
+	return msgId > ref;
+}
+
+export function createOrderedReceiver(handler: BccMsgConsumer, channelUUID: string): BccMsgConsumer {
+	let id = 0;
+	const recvBuf:BccMsg[] = [];
+
+	return (message) => {
+		if (isMsgLowLevel(message)) {
+			// Do not count low-level messages in id, process them directly
+			handler(message);
+			return;
+		}
+
+		if (message.channelUUID !== channelUUID) {
+			// Ignore the message if we are not the recipient.
+			return;
+		}
+
+		if (message.id == id) {
+			// First, we process the current incoming message.
+			handler(message);
+
+			// Then, increase our receiving id expectation by 1.
+			id++;
+
+			// Finally, we process buffer messages that arrive early, if any.
+			let bufferedMsg = recvBuf.shift(); // Dequeue
+			while (bufferedMsg) {
+				if (isMsgIdLaterThan(bufferedMsg.id, id)) {
+					// We encounter a gap in the buffer
+					// The last dequeued message is too early to process, put it back
+					recvBuf.unshift(bufferedMsg);
+					return;
+				}
+				handler(bufferedMsg);
+				id++;
+				bufferedMsg = recvBuf.shift();
+			}
+		} else if (isMsgIdLaterThan(message.id, id)) {
+			// Insert the message into the buffer in order
+			let i = 0;
+			for (i = 0; i < recvBuf.length; i++) {
+				const bufferedMsg = recvBuf[i];
+				if (isMsgIdLaterThan(bufferedMsg.id, message.id)) {
+					break;
+				} else if (bufferedMsg.id === message.id) {
+					utils.log(`A>O FWD Duplicated message found in buffer: ${message.id}`);
+					return;
+				}
+			}
+			recvBuf.splice(i, 0, message);
+			log(`Enqueue out-of-order message(expect ${id})`, message);
+		} else {
+			// event.data.id < recvId
+			// We received a duplicated message, discard
+			utils.log(`A>O FWD Duplicated message: ${message.id}, current: ${id}`);
+		}
+	}
+}
+
+export function log(prefix: string, message: BccMsg) {
+	const typeStr = BccMsgType[message.type];
+	let description = '';
+	if (isMsgContainsData(message)) {
+		const data = getBccMsgData<BccMsgTypeWithData>(message);
+		if (typeof data == 'string') {
+			if (data.length < 80) {
+				description = `string(${data.length}): ${data}`;
+			} else {
+				description = `string(${data.length})`;
+			}
+		} else {
+			description = `arraybuffer(${data.byteLength})`;
+		}
+	}
+	utils.debug(prefix, message.channelUUID.substring(0, 4), message.id, typeStr, description);
 }
