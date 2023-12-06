@@ -29,6 +29,18 @@ function callEventListener<T extends keyof WebSocketEventListenerMap>(
 
 // WebSocket API via BroadcastChannel tunnel
 export abstract class WebSocketBase implements WebSocketLike {
+	// The following properties are not implemented in a LogicalWebSocket.
+	public readonly bufferedAmount = 0;
+	public readonly extensions = '';
+	public readonly protocol = '';
+	public readonly url = '';
+
+	// These exist so that casting a LogicalWebSocket to WebSocket is possible.
+	public readonly CONNECTING = ReadyState.CONNECTING;
+	public readonly OPEN = ReadyState.OPEN;
+	public readonly CLOSING = ReadyState.CLOSING;
+	public readonly CLOSED = ReadyState.CLOSED;
+
 	/**
 	* An event listener to be called when the WebSocket connection's readyState changes to CLOSED
 	*/
