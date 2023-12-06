@@ -44,8 +44,8 @@ interface BccMsgDataMap {
 	[BccMsgType.CLOSE_INBOUND]: BccMsgClose,
 }
 
-type BccMsgTypeWithData = BccMsgType.NEW | BccMsgType.DATA_OUTBOUND | BccMsgType.DATA_INBOUND;
-type BccMsgTypeClose = BccMsgType.CLOSE_INBOUND | BccMsgType.CLOSE_OUTBOUND;
+export type BccMsgTypeWithData = BccMsgType.NEW | BccMsgType.DATA_OUTBOUND | BccMsgType.DATA_INBOUND;
+export type BccMsgTypeClose = BccMsgType.CLOSE_INBOUND | BccMsgType.CLOSE_OUTBOUND;
 
 /**
  * BroadcastChannelMessage
@@ -277,4 +277,22 @@ export function log(prefix: string, message: BccMsg) {
 		}
 	}
 	utils.debug(prefix, message.channelUUID.substring(0, 4), message.id, typeStr, description);
+}
+
+/**
+ * NOT ACCURATE! FOR SPEED LIMIT ONLY!
+ * @param message 
+ * @returns the effective byte length of a BccMsg. Only data messages are taken into account.
+ */
+export function getEffectiveByteLength(message: BccMsg) {
+	if (message.type != BccMsgType.DATA_INBOUND && message.type != BccMsgType.DATA_OUTBOUND) {
+		return 0;
+	}
+
+	const data = getBccMsgData<BccMsgTypeWithData>(message);
+	if (typeof data === 'string') {
+		return data.length;
+	} else {
+		return data.byteLength;
+	}
 }

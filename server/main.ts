@@ -1,6 +1,7 @@
 import * as utils from '../utils.ts'
 import * as messages from '../messages.ts'
 import {
+	denoDeployBccSpeedLimit,
 	handleBccWsForwarding
 } from './forwarder.ts'
 import {
@@ -15,6 +16,11 @@ if (Deno.env.get("DENO_REGION")) {
 
 const inboundChannel = new BroadcastChannel('portal_inbound');
 const outboundChannel = new BroadcastChannel('portal_outbound');
+
+const sendToForwarder = utils.createRateLimiter<messages.BccMsg>(
+	denoDeployBccSpeedLimit, 
+	messages.getEffectiveByteLength, 
+	outboundChannel.postMessage.bind(outboundChannel));
 
 function handleWsIn(lws: ActiveLogicalWebSocket, webSocket: WebSocket) {
 	lws.onopen = () => {
@@ -58,7 +64,7 @@ async function handleWsInRequest(req: Request, destURL: string) {
 	const lws = new ActiveLogicalWebSocket(
 		(message) => {
 			messages.log('A>O AGT', message);
-			outboundChannel.postMessage(message);
+			sendToForwarder(message);
 		},
 		(me, handler) => {
 			function bccMsgHandler(event: MessageEvent<messages.BccMsg>) {

@@ -2,12 +2,15 @@ import * as utils from '../utils.ts'
 import * as messages from '../messages.ts'
 import { ReadyState } from "../retransmitting-websocket/src/RetransmittingWebSocket.ts";
 
+export const denoDeployBccSpeedLimit = 82; // Documentation says it is 64kB/s
+
 const inboundChannel = new BroadcastChannel('portal_inbound');
 const outboundChannel = new BroadcastChannel('portal_outbound');
 
-function sendToAgent(message: messages.BccMsg) {
-	inboundChannel.postMessage(message);
-}
+const sendToAgent = utils.createRateLimiter<messages.BccMsg>(
+	denoDeployBccSpeedLimit,
+	messages.getEffectiveByteLength, 
+	inboundChannel.postMessage.bind(inboundChannel));
 
 /**
  * This endpoint simply sends the broadcasting message to the remote pair.
